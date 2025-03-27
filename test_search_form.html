@@ -26,6 +26,9 @@
 <body>
     <h1>Test RAG API</h1>
     <p>The response will indicate if any sources were used.</p>
+
+    <!-- Form for /generate endpoint -->
+    <h2>Generate Text</h2>
     <form id="ragForm" action="http://192.168.0.120:3000/generate" method="post">
         <!-- Model Selection -->
         <label for="model">Model:</label>
@@ -60,9 +63,28 @@ Answer:
         <input type="submit" value="Generate Text">
     </form>
 
-    <div class="response" id="responseContainer" style="display: none;">
-        <p id="responseText"></p>
-        <div class="sources" id="sourcesUsed"></div>
+    <div class="response" id="generateResponseContainer" style="display: none;">
+        <p id="generateResponseText"></p>
+        <div class="sources" id="generateSourcesUsed"></div>
+    </div>
+
+    <!-- Form for /agent endpoint -->
+    <h2>Agent Query</h2>
+    <form id="agentForm" action="http://192.168.0.120:3000/agent" method="post">
+        <!-- Query Input -->
+        <label for="query">Query:</label><br>
+        <textarea id="query" name="query" rows="5" cols="50" required>
+What is the capital of France?
+        </textarea>
+        <br><br>
+
+        <!-- Submit Button -->
+        <input type="submit" value="Submit Query">
+    </form>
+
+    <div class="response" id="agentResponseContainer" style="display: none;">
+        <p id="agentResponseText"></p>
+        <div class="sources" id="agentSourcesUsed"></div>
     </div>
 
     <script>
@@ -78,9 +100,9 @@ Answer:
             formData.append('prompt', prompt);
             formData.append('parameters', parameters);
 
-            const responseContainer = document.getElementById('responseContainer');
-            const responseText = document.getElementById('responseText');
-            const sourcesUsed = document.getElementById('sourcesUsed');
+            const responseContainer = document.getElementById('generateResponseContainer');
+            const responseText = document.getElementById('generateResponseText');
+            const sourcesUsed = document.getElementById('generateSourcesUsed');
 
             responseContainer.style.display = 'block';
             responseText.textContent = 'Generating text...';
@@ -97,11 +119,57 @@ Answer:
                     parameters: parameters
                 })
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
             .then(data => {
                 responseText.textContent = data.text;
                 if (data.sourcesUsed.length > 0) {
                     sourcesUsed.innerHTML = '<strong>Sources Used:</strong> ' + data.sourcesUsed.join(', ');
+                } else {
+                    sourcesUsed.innerHTML = '<strong>No sources used for this query.</strong>';
+                }
+            })
+            .catch(error => {
+                responseText.textContent = 'Error: ' + error.message;
+            });
+        });
+
+        document.getElementById('agentForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const query = document.getElementById('query').value;
+
+            const responseContainer = document.getElementById('agentResponseContainer');
+            const responseText = document.getElementById('agentResponseText');
+            const sourcesUsed = document.getElementById('agentSourcesUsed');
+
+            responseContainer.style.display = 'block';
+            responseText.textContent = 'Generating response...';
+            sourcesUsed.innerHTML = '';
+
+            fetch('http://192.168.0.120:3000/agent', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    query: query
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                responseText.textContent = data.answer;
+                if (data.sources.length > 0) {
+                    sourcesUsed.innerHTML = '<strong>Sources Used:</strong> ' + data.sources.map(source => `<a href="${source.url}" target="_blank">${source.title}</a>`).join(', ');
                 } else {
                     sourcesUsed.innerHTML = '<strong>No sources used for this query.</strong>';
                 }
