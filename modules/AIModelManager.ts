@@ -1,8 +1,42 @@
-const APIHandler = require('./APIHandler');
-const { EventEmitter } = require('events');
-const split = require('split2');
+import APIHandler from './APIHandler';
+import { EventEmitter } from 'events';
+import split from 'split2';
+
+// Define interfaces for parameters and responses
+interface ModelParameters {
+    max_tokens: number;
+    temperature: number;
+    top_p: number;
+    top_k: number;
+    min_p: number;
+    repetition_penalty: number;
+    presence_penalty: number;
+    stop: string | string[];
+    [key: string]: any; // Allow additional parameters
+}
+
+interface GenerationRequest {
+    model: string;
+    prompt: string;
+    stream: boolean;
+    seed: number;
+    [key: string]: any;
+}
+
+interface GenerationChoice {
+    text?: string;
+    finish_reason?: string;
+}
+
+interface GenerationResponse {
+    choices?: GenerationChoice[];
+    [key: string]: any;
+}
 
 class AIModelManager extends EventEmitter {
+    private modelVar: string | null;
+    private parameters: ModelParameters;
+
     constructor() {
         super();
         this.modelVar = null;
@@ -18,29 +52,29 @@ class AIModelManager extends EventEmitter {
         };
     }
 
-    setModel(model) {
+    setModel(model: string): void {
         this.modelVar = model;
     }
 
-    setParameters(newParams) {
+    setParameters(newParams: Partial<ModelParameters>): void {
         Object.keys(newParams).forEach(key => {
             if (this.parameters.hasOwnProperty(key)) {
-                this.parameters[key] = newParams[key];
+                this.parameters[key as keyof ModelParameters] = newParams[key as keyof ModelParameters];
             } else {
                 console.warn(`Warning: Unknown parameter '${key}'`);
             }
         });
     }
 
-    static async getSortedModels() {
+    static async getSortedModels(): Promise<string[]> {
         const models = await APIHandler.fetchModels();
         return this._sortModelsBySize(models);
     }
 
-    static _sortModelsBySize(models) {
+    static _sortModelsBySize(models: string[]): string[] {
         const sizePattern = /(\d+)x(\d+)[bB]|(\d+)[bB]/i;
 
-        const getSize = (modelName) => {
+        const getSize = (modelName: string): number => {
             const match = modelName.match(sizePattern);
             if (match) {
                 if (match[1] && match[2]) {
@@ -53,19 +87,19 @@ class AIModelManager extends EventEmitter {
             return Infinity;
         };
 
-        return models.sort((a, b) => {
+        return models.sort((a: string, b: string) => {
             const sizeA = getSize(a);
             const sizeB = getSize(b);
             return sizeA - sizeB || a.localeCompare(b);
         });
     }
 
-    async generateText(prompt, insertChunkFunc) {
+    async generateText(prompt: string, insertChunkFunc: (text: string) => void): Promise<void> {
         if (!this.modelVar) {
             throw new Error("No model selected. Please set a model using setModel()");
         }
 
-        const data = {
+        const data: GenerationRequest = {
             model: this.modelVar,
             prompt,
             stream: true,
@@ -78,7 +112,7 @@ class AIModelManager extends EventEmitter {
             const stream = response.data;
 
             // Split stream into lines and process
-            stream.pipe(split()).on('data', (line) => {
+            stream.pipe(split()).on('data', (line: string) => {
                 if (line.startsWith('data: ')) {
                     const jsonData = line.slice(6); // Remove 'data: ' prefix
                     if (jsonData.trim() === '[DONE]') {
@@ -86,7 +120,7 @@ class AIModelManager extends EventEmitter {
                         return;
                     }
                     try {
-                        const payload = JSON.parse(jsonData);
+                        const payload = JSON.parse(jsonData) as GenerationResponse;
                         const choice = payload.choices?.[0];
 
                         if (choice?.text) {
@@ -101,14 +135,14 @@ class AIModelManager extends EventEmitter {
                 }
             });
 
-            stream.on('error', (err) => {
+            stream.on('error', (err: Error) => {
                 console.error('Stream error:', err);
             });
 
-        } catch (error) {
+        } catch (error: any) { // Explicitly typed as any
             console.error('Generation failed:', error.message);
         }
     }
 }
 
-module.exports = AIModelManager;
+export default AIModelManager;

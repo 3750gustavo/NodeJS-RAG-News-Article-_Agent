@@ -1,11 +1,17 @@
-const fs = require('fs');
-const path = require('path');
-const axios = require('axios');
-const cheerio = require('cheerio');
-const { Kafka, logLevel } = require('kafkajs');
+import * as fs from 'fs';
+import * as path from 'path';
+import axios from 'axios';
+import * as cheerio from 'cheerio';
+import { Kafka, logLevel } from 'kafkajs';
 
 class RagProcessor {
-    constructor(sourcesDir) {
+    private sourcesDir: string = '';
+    private documents: any[] = [];
+    private isShuttingDown: boolean = false;
+    private kafka: Kafka;
+    private consumer: any = null;
+
+    constructor(sourcesDir: string) {
         this.sourcesDir = sourcesDir;
         this.documents = [];
         this.isShuttingDown = false;
@@ -13,17 +19,17 @@ class RagProcessor {
         // Create Kafka client with enhanced configuration
         this.kafka = new Kafka({
             clientId: 'news-rag-agent',
-            brokers: [process.env.KAFKA_BROKER],
+            brokers: [process.env.KAFKA_BROKER || 'localhost:9092'],
             ssl: {
                 rejectUnauthorized: true,
                 // CA certificate might be required based on your Kafka setup
                 // ca: fs.readFileSync('/path/to/ca-cert.pem', 'utf-8'),
             },
-            sasl: {
+            sasl: process.env.KAFKA_USERNAME && process.env.KAFKA_PASSWORD ? {
                 mechanism: 'plain',
                 username: process.env.KAFKA_USERNAME,
                 password: process.env.KAFKA_PASSWORD
-            },
+            } : undefined,
             connectionTimeout: 10000, // 10 seconds
             retry: {
                 initialRetryTime: 300,
@@ -80,9 +86,17 @@ class RagProcessor {
             });
 
             await this.consumer.run({
-                eachMessage: async ({ topic, partition, message }) => {
+                eachMessage: async ({ _topic, partition, message }: {
+                    _topic: string;
+                    partition: number;
+                    message: { value: Buffer | null };
+                }) => {
                     try {
-                        const url = message.value.toString();
+                        const url = message.value ? message.value.toString() : '';
+                        if (!url) {
+                            console.warn('Received empty message from Kafka');
+                            return;
+                        }
                         console.log(`Received URL from Kafka: ${url}`);
                         await this.processNewsArticle(url);
                     } catch (error) {
@@ -127,7 +141,7 @@ class RagProcessor {
         }
     }
 
-    processCsvFile(csvPath) {
+    processCsvFile(csvPath: string) {
         const lines = fs.readFileSync(csvPath, 'utf8').split('\n');
         for (const line of lines) {
             const [source, url] = line.trim().split(',').map(part => part.trim());
@@ -138,11 +152,11 @@ class RagProcessor {
         }
     }
 
-    async processNewsArticle(url) {
+    async processNewsArticle(url: string): Promise<any> {
         try {
             console.log(`Processing article from URL: ${url}`);
             const response = await axios.get(url);
-            const $ = cheerio.load(response.data);
+            const $ = cheerio.load(response.data); // Initialize cheerio here
 
             // Extract title and content
             const title = $('h1').first().text() || $('title').text();
@@ -183,7 +197,7 @@ class RagProcessor {
         }
     }
 
-    async retrieveContext(query, maxChars = 30000) {
+    async retrieveContext(query: string, maxChars = 30000): Promise<{ context: string; sourcesUsed: any[] }> {
         // Extract the actual question from the prompt format
         let searchQuery = query;
         const match = query.match(/Question:\s*(.*?)\s*Answer:/);
@@ -198,7 +212,7 @@ class RagProcessor {
                 !['who', 'what', 'when', 'where', 'why', 'how', 'is', 'are', 'the'].includes(word)
             );
 
-        const chunks = [];
+        const chunks: any[] = [];
         const sourcesUsed = new Set();
 
         // Local documents
@@ -221,7 +235,7 @@ class RagProcessor {
 
         // Build context string
         let context = '';
-        const usedSources = [];
+        const usedSources: Array<{title: string; url: string; date: string}> = [];
         for (const chunk of chunks) {
             if (context.length >= maxChars) break;
             const remaining = maxChars - context.length;
@@ -236,7 +250,7 @@ class RagProcessor {
         return { context, sourcesUsed: usedSources };
     }
 
-    calculateRelevance(content, keywords) {
+    calculateRelevance(content: string, keywords: string[]): number {
         const text = content.toLowerCase();
         let score = 0;
         for (const keyword of keywords) {
@@ -246,9 +260,9 @@ class RagProcessor {
         return score;
     }
 
-    async delay(ms) {
+    async delay(ms: number): Promise<void> {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 }
 
-module.exports = RagProcessor;
+export default RagProcessor;

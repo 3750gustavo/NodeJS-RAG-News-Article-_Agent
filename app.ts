@@ -1,11 +1,46 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
-const AIModelManager = require('./modules/AIModelManager');
-const RagProcessor = require('./modules/RagProcessor');
-require('dotenv').config();
+import express, { Request, Response, NextFunction, RequestHandler } from 'express';
+import { ParamsDictionary } from 'express-serve-static-core';
+import { ParsedQs } from 'qs';
+import bodyParser from 'body-parser';
+import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
+import AIModelManager from './modules/AIModelManager';
+import RagProcessor from './modules/RagProcessor';
+import dotenv from 'dotenv';
+dotenv.config();
+
+// Interfaces
+interface Config {
+  PORT: number;
+  [key: string]: any;
+}
+
+interface GenerateRequestBody {
+  model: string;
+  prompt: string;
+  parameters: string;
+}
+
+interface AgentRequestBody {
+  query: string;
+}
+
+interface Source {
+  title: string;
+  [key: string]: any;
+}
+
+interface RagResult {
+  context: string;
+  sourcesUsed: Source[];
+}
+
+interface GenerateResult {
+  text: string;
+  sourcesUsed: string[];
+}
+
 const sourcesDir = path.join(__dirname, 'Rag-Sources');
 
 const app = express();
@@ -17,47 +52,47 @@ app.use(cors());
 const ragProcessor = new RagProcessor(sourcesDir);
 
 // Read configuration
-const configPath = path.join(__dirname, 'config.json');
-const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+const configPath = path.join(process.cwd(), 'config.json');
+const config: Config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 const PORT = config.PORT || 3000;
 
 // Initialize AI model manager
 const aiModelManager = new AIModelManager();
 
 // Middleware to handle CORS
-app.use((req, res, next) => {
+app.use((req: Request, res: Response, next: NextFunction) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
     next();
 });
 
 // Route to get available models
-app.get('/models', async (req, res) => {
+app.get('/models', (async (req: Request, res: Response) => {
     try {
         const models = await AIModelManager.getSortedModels();
         res.json(models);
     } catch (error) {
-        console.error('Failed to fetch models:', error.message);
+        console.error('Failed to fetch models:', (error as Error).message);
         res.status(500).json({ error: 'Failed to fetch models' });
     }
-});
+}) as RequestHandler);
 
 // Route to generate text
-app.post('/generate', async (req, res) => {
+app.post('/generate', (async (req: Request<ParamsDictionary, any, GenerateRequestBody, ParsedQs>, res: Response) => {
     const { model, prompt, parameters } = req.body;
 
     // Parse parameters from JSON string to object
-    let paramsObj = {};
+    let paramsObj: Record<string, any> = {};
     try {
         paramsObj = JSON.parse(parameters);
     } catch (error) {
-        console.error('Failed to parse parameters:', error.message);
+        console.error('Failed to parse parameters:', (error as Error).message);
         return res.status(400).json({ error: 'Invalid parameters format' });
     }
 
     // Retrieve context from RAG sources
     try {
-        const { context, sourcesUsed } = await ragProcessor.retrieveContext(prompt);
+        const { context, sourcesUsed }: RagResult = await ragProcessor.retrieveContext(prompt);
 
         // Log sources used
         if (sourcesUsed.length > 0) {
@@ -83,7 +118,7 @@ app.post('/generate', async (req, res) => {
         aiModelManager.removeAllListeners('complete');
 
         // Create a promise to handle the completion
-        const generatePromise = new Promise((resolve, reject) => {
+        const generatePromise = new Promise<GenerateResult>((resolve, reject) => {
             aiModelManager.once('complete', () => {
                 resolve({
                     text: responseText,
@@ -91,7 +126,7 @@ app.post('/generate', async (req, res) => {
                 });
             });
 
-            aiModelManager.generateText(fullPrompt, (chunk) => {
+            aiModelManager.generateText(fullPrompt, (chunk: string) => {
                 responseText += chunk;
             }).catch(reject);
         });
@@ -101,13 +136,13 @@ app.post('/generate', async (req, res) => {
         res.json(result);
 
     } catch (error) {
-        console.error('Failed to process request:', error.message);
+        console.error('Failed to process request:', (error as Error).message);
         res.status(500).json({ error: 'Failed to process request' });
     }
-});
+}) as RequestHandler);
 
 // New route for the /agent endpoint
-app.post('/agent', async (req, res) => {
+app.post('/agent', (async (req: Request<ParamsDictionary, any, AgentRequestBody, ParsedQs>, res: Response) => {
     const { query } = req.body;
 
     if (!query) {
@@ -116,7 +151,7 @@ app.post('/agent', async (req, res) => {
 
     try {
         // Retrieve context from RAG sources
-        const { context, sourcesUsed } = await ragProcessor.retrieveContext(query);
+        const { context, sourcesUsed }: RagResult = await ragProcessor.retrieveContext(query);
 
         // Construct full prompt with context
         const fullPrompt = `Context:\n${context}\n\nQuestion: ${query}\nAnswer:`;
@@ -145,12 +180,12 @@ app.post('/agent', async (req, res) => {
         aiModelManager.removeAllListeners('complete');
 
         // Create a promise to handle the completion
-        const generatePromise = new Promise((resolve, reject) => {
+        const generatePromise = new Promise<string>((resolve, reject) => {
             aiModelManager.once('complete', () => {
                 resolve(responseText);
             });
 
-            aiModelManager.generateText(fullPrompt, (chunk) => {
+            aiModelManager.generateText(fullPrompt, (chunk: string) => {
                 responseText += chunk;
             }).catch(reject);
         });
@@ -163,10 +198,10 @@ app.post('/agent', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Failed to process request:', error.message);
+        console.error('Failed to process request:', (error as Error).message);
         res.status(500).json({ error: 'Failed to process request' });
     }
-});
+}) as RequestHandler);
 
 // Start the server
 app.listen(PORT, () => {
