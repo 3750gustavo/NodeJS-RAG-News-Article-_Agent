@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test RAG API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .response {
+            margin-top: 20px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+        .response p {
+            margin: 0;
+        }
+        .response .sources {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test RAG API</h1>
+    <p>The response will indicate if any sources were used.</p>
+    <form id="ragForm" action="http://192.168.0.120:3000/generate" method="post">
+        <!-- Model Selection -->
+        <label for="model">Model:</label>
+        <input type="text" id="model" name="model" value="TheDrummer-UnslopNemo-12B-v4.1" required>
+        <br><br>
+
+        <!-- Prompt Input -->
+        <label for="prompt">Prompt:</label><br>
+        <textarea id="prompt" name="prompt" rows="5" cols="50" required>
+Question: What is the capital of France?
+Answer:
+        </textarea>
+        <br><br>
+
+        <!-- Parameters (JSON) -->
+        <label for="parameters">Parameters (JSON):</label><br>
+        <textarea id="parameters" name="parameters" rows="10" cols="50">
+{
+  "max_tokens": 222,
+  "temperature": 0.8,
+  "top_p": 0.98,
+  "top_k": -1,
+  "min_p": 0.08,
+  "repetition_penalty": 1.0,
+  "presence_penalty": 0.5,
+  "stop": "Question:"
+}
+        </textarea>
+        <br><br>
+
+        <!-- Submit Button -->
+        <input type="submit" value="Generate Text">
+    </form>
+
+    <div class="response" id="responseContainer" style="display: none;">
+        <p id="responseText"></p>
+        <div class="sources" id="sourcesUsed"></div>
+    </div>
+
+    <script>
+        document.getElementById('ragForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const model = document.getElementById('model').value;
+            const prompt = document.getElementById('prompt').value;
+            const parameters = document.getElementById('parameters').value;
+
+            const formData = new FormData();
+            formData.append('model', model);
+            formData.append('prompt', prompt);
+            formData.append('parameters', parameters);
+
+            const responseContainer = document.getElementById('responseContainer');
+            const responseText = document.getElementById('responseText');
+            const sourcesUsed = document.getElementById('sourcesUsed');
+
+            responseContainer.style.display = 'block';
+            responseText.textContent = 'Generating text...';
+            sourcesUsed.innerHTML = '';
+
+            fetch('http://192.168.0.120:3000/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: model,
+                    prompt: prompt,
+                    parameters: parameters
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                responseText.textContent = data.text;
+                if (data.sourcesUsed.length > 0) {
+                    sourcesUsed.innerHTML = '<strong>Sources Used:</strong> ' + data.sourcesUsed.join(', ');
+                } else {
+                    sourcesUsed.innerHTML = '<strong>No sources used for this query.</strong>';
+                }
+            })
+            .catch(error => {
+                responseText.textContent = 'Error: ' + error.message;
+            });
+        });
+    </script>
+</body>
+</html>
