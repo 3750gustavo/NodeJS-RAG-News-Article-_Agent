@@ -61,7 +61,7 @@ app.post('/generate', async (req, res) => {
 
         // Log sources used
         if (sourcesUsed.length > 0) {
-            console.log('Sources used:', sourcesUsed.map(source => source.title));
+            console.log('Sources used:', sourcesUsed.map(source => source.title).join(', '));
         } else {
             console.log('No sources used for this query.');
         }
