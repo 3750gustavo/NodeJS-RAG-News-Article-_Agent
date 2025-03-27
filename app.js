@@ -106,6 +106,68 @@ app.post('/generate', async (req, res) => {
     }
 });
 
+// New route for the /agent endpoint
+app.post('/agent', async (req, res) => {
+    const { query } = req.body;
+
+    if (!query) {
+        return res.status(400).json({ error: 'Query is required' });
+    }
+
+    try {
+        // Retrieve context from RAG sources
+        const { context, sourcesUsed } = await ragProcessor.retrieveContext(query);
+
+        // Construct full prompt with context
+        const fullPrompt = `Context:\n${context}\n\nQuestion: ${query}\nAnswer:`;
+
+        // Set default model and parameters
+        const model = 'TheDrummer-UnslopNemo-12B-v4.1';
+        const paramsObj = {
+            max_tokens: 222,
+            temperature: 0.8,
+            top_p: 0.98,
+            top_k: -1,
+            min_p: 0.08,
+            repetition_penalty: 1.0,
+            presence_penalty: 0.5,
+            stop: 'Question:'
+        };
+
+        // Set model and parameters
+        aiModelManager.setModel(model);
+        aiModelManager.setParameters(paramsObj);
+
+        // Generate text
+        let responseText = '';
+
+        // Remove any existing listeners to prevent memory leaks
+        aiModelManager.removeAllListeners('complete');
+
+        // Create a promise to handle the completion
+        const generatePromise = new Promise((resolve, reject) => {
+            aiModelManager.once('complete', () => {
+                resolve(responseText);
+            });
+
+            aiModelManager.generateText(fullPrompt, (chunk) => {
+                responseText += chunk;
+            }).catch(reject);
+        });
+
+        // Wait for completion and send response
+        const answer = await generatePromise;
+        res.json({
+            answer: answer,
+            sources: sourcesUsed
+        });
+
+    } catch (error) {
+        console.error('Failed to process request:', error.message);
+        res.status(500).json({ error: 'Failed to process request' });
+    }
+});
+
 // Start the server
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
