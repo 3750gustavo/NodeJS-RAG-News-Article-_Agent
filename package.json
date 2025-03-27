@@ -16,6 +16,8 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "devDependencies": {},
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  },
   "description": ""
 }
