@@ -116,6 +116,26 @@ class RagProcessor {
             const doc = JSON.parse(content);
             this.documents.push({ ...doc, filename: file });
         }
+
+        // Check for CSV files and process them
+        const csvFiles = fs.readdirSync(this.sourcesDir)
+            .filter(file => file.endsWith('.csv'));
+
+        for (const csvFile of csvFiles) {
+            const csvPath = path.join(this.sourcesDir, csvFile);
+            this.processCsvFile(csvPath);
+        }
+    }
+
+    processCsvFile(csvPath) {
+        const lines = fs.readFileSync(csvPath, 'utf8').split('\n');
+        for (const line of lines) {
+            const [source, url] = line.trim().split(',').map(part => part.trim());
+            if (url) {
+                console.log(`Processing URL from CSV: ${url}`);
+                this.processNewsArticle(url);
+            }
+        }
     }
 
     async processNewsArticle(url) {
@@ -164,7 +184,20 @@ class RagProcessor {
     }
 
     async retrieveContext(query, maxChars = 30000) {
-        const keywords = query.toLowerCase().split(' ');
+        // Extract the actual question from the prompt format
+        let searchQuery = query;
+        const match = query.match(/Question:\s*(.*?)\s*Answer:/);
+        if (match) {
+            searchQuery = match[1].trim();
+        }
+
+        const keywords = searchQuery.toLowerCase()
+            .split(/\s+/)
+            .filter(word =>
+                word.length > 2 &&
+                !['who', 'what', 'when', 'where', 'why', 'how', 'is', 'are', 'the'].includes(word)
+            );
+
         const chunks = [];
         const sourcesUsed = new Set();
 
@@ -183,22 +216,6 @@ class RagProcessor {
             }
         }
 
-        // Web search
-        const webResults = await this.searchWeb(query);
-        for (const result of webResults) {
-            const relevance = this.calculateRelevance(result.content, keywords);
-            if (relevance > 0) {
-                chunks.push({
-                    content: result.content,
-                    title: result.title,
-                    url: result.url,
-                    date: result.date,
-                    relevance
-                });
-                sourcesUsed.add(result.url);
-            }
-        }
-
         // Sort chunks by relevance
         chunks.sort((a, b) => b.relevance - a.relevance);
 
@@ -207,7 +224,6 @@ class RagProcessor {
         const usedSources = [];
         for (const chunk of chunks) {
             if (context.length >= maxChars) break;
-
             const remaining = maxChars - context.length;
             context += chunk.content.slice(0, remaining) + "\n\n";
             usedSources.push({
@@ -230,37 +246,8 @@ class RagProcessor {
         return score;
     }
 
-    async searchWeb(query) {
-        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-        try {
-            const response = await axios.get(searchUrl, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
-                }
-            });
-            const $ = cheerio.load(response.data);
-
-            const results = [];
-            $('a').each((_, element) => {
-                const href = $(element).attr('href');
-                if (href && href.startsWith('http') && !href.includes('google')) {
-                    results.push(href);
-                }
-            });
-
-            const articles = [];
-            for (const url of results.slice(0, 5)) { // Limit to top 5 results
-                const article = await this.processNewsArticle(url);
-                if (article) {
-                    articles.push(article);
-                }
-            }
-
-            return articles;
-        } catch (error) {
-            console.error('Error performing web search:', error);
-            return [];
-        }
+    async delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 }
 
