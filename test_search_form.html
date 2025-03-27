@@ -29,7 +29,7 @@
 
     <!-- Form for /generate endpoint -->
     <h2>Generate Text</h2>
-    <form id="ragForm" action="http://192.168.0.120:3000/generate" method="post">
+    <form id="ragForm" action="" method="post">
         <!-- Model Selection -->
         <label for="model">Model:</label>
         <input type="text" id="model" name="model" value="TheDrummer-UnslopNemo-12B-v4.1" required>
@@ -70,7 +70,7 @@ Answer:
 
     <!-- Form for /agent endpoint -->
     <h2>Agent Query</h2>
-    <form id="agentForm" action="http://192.168.0.120:3000/agent" method="post">
+    <form id="agentForm" action="" method="post">
         <!-- Query Input -->
         <label for="query">Query:</label><br>
         <textarea id="query" name="query" rows="5" cols="50" required>
@@ -88,6 +88,9 @@ What is the capital of France?
     </div>
 
     <script>
+        // Define the base URL
+        const baseUrl = 'http://192.168.0.120:3000';
+
         document.getElementById('ragForm').addEventListener('submit', function(event) {
             event.preventDefault();
 
@@ -108,7 +111,7 @@ What is the capital of France?
             responseText.textContent = 'Generating text...';
             sourcesUsed.innerHTML = '';
 
-            fetch('http://192.168.0.120:3000/generate', {
+            fetch(`${baseUrl}/generate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -151,7 +154,7 @@ What is the capital of France?
             responseText.textContent = 'Generating response...';
             sourcesUsed.innerHTML = '';
 
-            fetch('http://192.168.0.120:3000/agent', {
+            fetch(`${baseUrl}/agent`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
