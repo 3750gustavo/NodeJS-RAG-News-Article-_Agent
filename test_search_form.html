@@ -128,7 +128,7 @@ What is the capital of France?
             .then(data => {
                 responseText.textContent = data.text;
                 if (data.sourcesUsed.length > 0) {
-                    sourcesUsed.innerHTML = '<strong>Sources Used:</strong> ' + data.sourcesUsed.join(', ');
+                    sourcesUsed.innerHTML = '<strong>Sources Used:</strong> ' + data.sourcesUsed.map(source => `<a href="${source.url}" target="_blank">${source.title}</a>`).join(', ');
                 } else {
                     sourcesUsed.innerHTML = '<strong>No sources used for this query.</strong>';
                 }
